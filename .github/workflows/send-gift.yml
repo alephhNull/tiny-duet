@@ -1,0 +1,44 @@
+# Sends you a photo of the closed music box with a single 🎁 button.
+# Forward that message to her: the button opens the music box inside Telegram.
+#
+# Needs the repository secret BOT_TOKEN (from @BotFather), and you must have
+# sent /start to your bot first so it knows where to send the message.
+name: Send the gift button
+
+on:
+  workflow_dispatch:
+    inputs:
+      button:
+        description: Button text
+        default: "🎁"
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send the message
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          BUTTON: ${{ inputs.button }}
+          COVER: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/cover.jpg
+          SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          set -euo pipefail
+          api="https://api.telegram.org/bot${BOT_TOKEN}"
+          # never print anything that identifies you or the bot: these logs are public
+          bot=$(curl -sf "$api/getMe" | jq -r '.result.username')
+          echo "::add-mask::$bot"
+          chat=$(curl -sf "$api/getUpdates" | jq -r '[.result[] | (.message // .edited_message) | select(.chat.type == "private") | .chat.id] | last // empty')
+          if [ -z "$chat" ]; then
+            echo "No chat found: open your bot in Telegram, press Start (or send /start), then run this again."
+            exit 1
+          fi
+          echo "::add-mask::$chat"
+          # the chat's menu button opens the music box too
+          curl -sf "$api/setChatMenuButton" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg t "$BUTTON" --arg u "$SITE" '{menu_button:{type:"web_app",text:$t,web_app:{url:$u}}}')" >/dev/null
+          link="https://t.me/${bot}?startapp"
+          body=$(jq -nc --arg c "$chat" --arg p "$COVER" --arg t "$BUTTON" --arg l "$link" \
+            '{chat_id:$c, photo:$p, reply_markup:{inline_keyboard:[[{text:$t, url:$l}]]}}')
+          curl -sf "$api/sendPhoto" -H 'Content-Type: application/json' -d "$body" >/dev/null
+          echo "Sent. Open your bot chat in Telegram and forward the photo to her."
