@@ -21,8 +21,9 @@ a small story plays on the turning stage, timed to *The Piano Duet*. There's no 
 | 2:03 | The three walk through the arch towards home. They look back, and the girl waves. |
 | 2:10 | The key slows to a stop, everything folds back into the stage, the lid closes, and the heart on top beats twice. You can wind it again. |
 
-During the story you can drag sideways to look around, tap the stage for hearts and a chime,
-or tap either figure to make them hop.
+During the story you can drag sideways to look around, pinch (or double-tap, or use the mouse
+wheel) to zoom in on the figures, tap the stage for hearts and a chime, or tap a figure to make
+it hop. Zoom follows the figures and drifts back to the whole box a few seconds after you let go.
 
 ## Run locally
 
@@ -58,7 +59,7 @@ GitHub Actions (`.github/workflows/deploy.yml`).
    gh workflow run send-gift.yml --repo alephhNull/tiny-duet
    ```
 
-   The bot sends you the message «فاطیما، کوکش کن🎶» with one 🎁 button under it, and sets the chat's
+   The bot sends you the message «کوکش کن🎶» with one 🎁 button under it, and sets the chat's
    menu button to 🎁 too. Change them with `-f text=...` or `-f button=💌`.
 7. Forward that message to her. Tapping 🎁 opens the music box inside Telegram, full screen on phones.
 

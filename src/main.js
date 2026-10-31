@@ -87,7 +87,7 @@ scene.add(her.root, him.root, girl.root);
 
 const cloudHeart = new CloudHeart();
 scene.add(cloudHeart.group, cloudHeart.rain.mesh);
-const rain = new Rain(800, 2.6, 3.0);
+const rain = new Rain(900, 2.6, 5.2, '#a9bdd6', 0.18, 0.55);
 rain.floor = FLOOR_Y;
 scene.add(rain.mesh);
 const petals = new Petals(260);
@@ -155,6 +155,14 @@ let lastClick = 0;
 let wound = false;
 let keyAngle = 0;
 let yawOffset = 0, yawVel = 0;
+// zoom: pinch, double-tap or mouse wheel. It follows the figures and eases back to the whole box
+// a few seconds after you let go.
+const ZMAX = 2.8;
+let zoom = 1, zoomGoal = 1, zoomHold = 0;
+const touches = new Map();
+let pinch = null;
+let lastTap = 0;
+const subject = new THREE.Vector3(), subjectSm = new THREE.Vector3(0, 1, 1.4);
 let lastInteract = performance.now();
 let held = null;
 const chimeNotes = [0, 1, 2].map((i) => noteFreq(scalePcs[(i * 2) % scalePcs.length], 5));
@@ -188,6 +196,14 @@ function keyCenter() {
 function onDown(e) {
   sound.unlock();
   lastInteract = performance.now();
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size >= 2) {
+    // second finger: start pinching, and the first finger stops rotating/winding
+    const [a, b] = [...touches.values()];
+    pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoomGoal };
+    if (pointer) pointer.moved = 999;
+    return;
+  }
   const kc = keyCenter();
   pointer = {
     id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(),
@@ -198,6 +214,15 @@ function onDown(e) {
   } catch (err) {}
 }
 function onMove(e) {
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch) {
+    if (touches.size >= 2 && state === 'play') {
+      const [a, b] = [...touches.values()];
+      zoomGoal = clamp(pinch.z0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0, 1, ZMAX);
+      zoomHold = 2.5;
+    }
+    return;
+  }
   if (!pointer || e.pointerId !== pointer.id) return;
   const dx = e.clientX - pointer.x, dy = e.clientY - pointer.y;
   pointer.moved += Math.hypot(dx, dy);
@@ -244,6 +269,15 @@ function onMove(e) {
   }
 }
 function onUp(e) {
+  touches.delete(e.pointerId);
+  if (pinch) {
+    if (touches.size < 2) {
+      pinch = null;
+      pointer = null;
+      zoomHold = 2.5;
+    }
+    return;
+  }
   if (!pointer || e.pointerId !== pointer.id) return;
   const tap = pointer.moved < 10 && performance.now() - pointer.t < 400;
   pointer = null;
@@ -254,6 +288,13 @@ function onUp(e) {
     return;
   }
   if (state === 'play' && tap) {
+    // double-tap: zoom in on them (or back out)
+    const now = performance.now();
+    if (now - lastTap < 320) {
+      zoomGoal = zoomGoal > 1.3 ? 1 : 2.3;
+      zoomHold = zoomGoal > 1 ? 4 : 0;
+      lastTap = 0;
+    } else lastTap = now;
     ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const hits = ray.intersectObjects([her.root, him.root, girl.root, box.disc], true);
@@ -283,7 +324,17 @@ const cv = renderer.domElement;
 cv.addEventListener('pointerdown', onDown);
 cv.addEventListener('pointermove', onMove);
 cv.addEventListener('pointerup', onUp);
-cv.addEventListener('pointercancel', (e) => { if (pointer && e.pointerId === pointer.id) pointer = null; });
+cv.addEventListener('pointercancel', (e) => {
+  touches.delete(e.pointerId);
+  if (touches.size < 2) pinch = null;
+  if (pointer && e.pointerId === pointer.id) pointer = null;
+});
+cv.addEventListener('wheel', (e) => {
+  if (state !== 'play') return;
+  e.preventDefault();
+  zoomGoal = clamp(zoomGoal * Math.exp(-e.deltaY * 0.0015), 1, ZMAX);
+  zoomHold = 2.5;
+}, { passive: false });
 // iOS: make sure audio unlocks on the touch itself
 cv.addEventListener('touchend', () => {
   sound.unlock();
@@ -299,6 +350,7 @@ const clock = new THREE.Clock();
 let time = 0;
 const camTarget = new THREE.Vector3();
 const focusPt = new THREE.Vector3();
+const focusUp = new THREE.Vector3(0, 0.95, 0);
 const fadeEl = document.getElementById('fade');
 // ?shot renders a clean, closer still of the closed box (used for the bot's cover image)
 const shot = new URLSearchParams(location.search).has('shot');
@@ -354,14 +406,36 @@ function frame() {
     yawVel *= Math.exp(-dt * 4);
     yawOffset += yawVel;
   }
-  const [yaw0, pitch, dm, tx, ty, tz] = cam;
+  // zoom: hold while pinching, then drift back to the whole box
+  if (state !== 'play') zoomGoal = 1;
+  else if (!pinch) {
+    zoomHold -= dt;
+    if (zoomHold <= 0) zoomGoal = lerp(zoomGoal, 1, 1 - Math.exp(-dt * 1.4));
+  }
+  zoom = lerp(zoom, zoomGoal, 1 - Math.exp(-dt * 8));
+  // the figures on stage: zooming follows them as they move
+  let n = 0;
+  subject.set(0, 0, 0);
+  for (const r of [her.root, him.root, girl.root]) {
+    if (r.visible && r.scale.y > 0.3) {
+      subject.add(r.position);
+      n++;
+    }
+  }
+  if (n) subject.divideScalar(n).add(focusUp);
+  else subject.set(0, 0.95, 1.3);
+  subjectSm.lerp(subject, 1 - Math.exp(-dt * 4));
+  const zk = clamp((zoom - 1) / 1.2);
+  const zs = zk * zk * (3 - 2 * zk);
+  const [yaw0, pitch0, dm, tx, ty, tz] = cam;
   const yaw = yaw0 + yawOffset + Math.sin(time * 0.21) * 0.035;
-  const dist = fitDist * dm * (shot && state === 'pre' ? 0.72 : 1);
-  camTarget.set(tx, ty, tz);
+  const pitch = pitch0 * (1 - 0.35 * zs);
+  const dist = (fitDist * dm * (shot && state === 'pre' ? 0.72 : 1)) / zoom;
+  camTarget.set(tx, ty, tz).lerp(subjectSm, zs);
   camera.position.set(
-    tx + Math.sin(yaw) * Math.cos(pitch) * dist,
-    ty + Math.sin(pitch) * dist + Math.sin(time * 0.33) * 0.03,
-    tz + Math.cos(yaw) * Math.cos(pitch) * dist,
+    camTarget.x + Math.sin(yaw) * Math.cos(pitch) * dist,
+    camTarget.y + Math.sin(pitch) * dist + Math.sin(time * 0.33) * 0.03,
+    camTarget.z + Math.cos(yaw) * Math.cos(pitch) * dist,
   );
   camera.lookAt(camTarget);
 
@@ -373,7 +447,7 @@ function frame() {
 
   dust.update(time, dt);
   // keep the figures in the sharp band of the tilt-shift
-  focusPt.set(0, 0.75, 1.3).project(camera);
+  focusPt.set(0, 0.75, 1.3).lerp(subjectSm, zs).project(camera);
   post.setFocus(clamp(focusPt.y * 0.5 + 0.5, 0.2, 0.8), 1);
   post.watch(dt);
   post.render();

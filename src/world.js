@@ -28,15 +28,26 @@ export function makeSky() {
 
 // ------------------------------------------------------------ rain
 export class Rain {
-  constructor(n, radius, height, color = '#a9bdd6', len = 0.18) {
+  // fade: fraction of the column (from the top) over which drops fade in, so there's no hard ceiling
+  constructor(n, radius, height, color = '#a9bdd6', len = 0.18, fade = 0) {
     this.n = n;
     this.r = radius;
     this.h = height;
     this.len = len;
+    this.fade = fade;
     const pos = new Float32Array(n * 6);
+    this.alpha = new Float32Array(n * 8);
+    const c = new THREE.Color(color);
+    for (let i = 0; i < n * 2; i++) {
+      this.alpha[i * 4] = c.r;
+      this.alpha[i * 4 + 1] = c.g;
+      this.alpha[i * 4 + 2] = c.b;
+      this.alpha[i * 4 + 3] = 1;
+    }
     this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false });
+    this.geo.setAttribute('color', new THREE.BufferAttribute(this.alpha, 4));
+    this.mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false });
     this.mesh = new THREE.LineSegments(this.geo, this.mat);
     this.mesh.frustumCulled = false;
     const R = rng(7 + n);
@@ -53,21 +64,29 @@ export class Rain {
     const active = Math.floor(this.n * clamp(this.intensity));
     if (active === 0 && !this.mesh.visible) return;
     const arr = this.geo.attributes.position.array;
+    const al = this.alpha;
     for (let i = 0; i < this.n; i++) {
       const d = this.drops[i];
       d.y -= d.v * dt;
       if (d.y < this.floor) d.y += this.h;
       const j = i * 6;
       if (i >= active) {
-        arr[j] = arr[j + 1] = arr[j + 2] = arr[j + 3] = arr[j + 4] = arr[j + 5] = 0;
+        arr[j] = arr[j + 2] = arr[j + 3] = arr[j + 5] = 0;
         arr[j + 1] = arr[j + 4] = -50;
         continue;
       }
       const x = this.center.x + d.x, z = this.center.z + d.z, y = this.center.y + d.y;
       arr[j] = x; arr[j + 1] = y; arr[j + 2] = z;
       arr[j + 3] = x - 0.01; arr[j + 4] = y - this.len; arr[j + 5] = z;
+      if (this.fade > 0) {
+        // fade in from the top of the column
+        const k = Math.min(1, (this.h - d.y) / (this.h * this.fade));
+        al[i * 8 + 3] = k;
+        al[i * 8 + 7] = k;
+      }
     }
     this.geo.attributes.position.needsUpdate = true;
+    if (this.fade > 0) this.geo.attributes.color.needsUpdate = true;
     this.mesh.visible = active > 0;
   }
 }
