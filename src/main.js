@@ -38,11 +38,15 @@ function haptic(kind = 'light') {
 }
 
 // ------------------------------------------------------------------ renderer & scene
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// phones get lighter settings from the start (and step down further on their own if needed)
+const phone = new URLSearchParams(location.search).has('phone') || (tg && (tg.platform === 'ios' || tg.platform === 'android')) ||
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && matchMedia('(pointer: coarse)').matches);
+const renderer = new THREE.WebGLRenderer({ antialias: !phone, powerPreference: 'high-performance' });
+let dprCap = phone ? 1.5 : 2;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = phone ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 1.0;
 document.body.prepend(renderer.domElement);
@@ -63,7 +67,7 @@ scene.add(hemi);
 const keyLight = new THREE.DirectionalLight('#ffe2bd', 1.6);
 keyLight.position.set(-3, 9, 7);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.mapSize.set(phone ? 1024 : 2048, phone ? 1024 : 2048);
 const sc = keyLight.shadow.camera;
 sc.left = -6; sc.right = 6; sc.top = 6; sc.bottom = -6; sc.near = 1; sc.far = 40;
 keyLight.shadow.bias = -0.0005;
@@ -71,12 +75,7 @@ keyLight.shadow.normalBias = 0.02;
 keyLight.shadow.radius = 4;
 scene.add(keyLight);
 scene.add(keyLight.target);
-const lamp = new THREE.PointLight('#ffc98a', 0, 3.2, 1.6);
-scene.add(lamp);
-// warm light spilling out of the box when the lid opens
-const flash = new THREE.PointLight('#ffd59a', 0, 9, 1.4);
-flash.position.set(0, 1.2, 0.6);
-scene.add(flash);
+
 
 const box = new MusicBox();
 scene.add(box.group);
@@ -105,8 +104,8 @@ scene.add(hearts.mesh);
 const sound = new Sound(`${import.meta.env.BASE_URL}duet.mp3`);
 
 const story = new Story({
-  box, her, him, girl, cloudHeart, keyLight, hemi, lamp, rain, petals, fireflies,
-  sparkles, hearts, haptic, flash, scene3: scene, root: scene,
+  box, her, him, girl, cloudHeart, keyLight, hemi, rain, petals, fireflies,
+  sparkles, hearts, haptic, scene3: scene, root: scene,
 });
 
 // notes for tap-chimes, from the song's own most common pitch classes
@@ -117,7 +116,18 @@ const noteFreq = (pc, oct) => 440 * Math.pow(2, (pc - 9) / 12 + (oct - 4));
 
 // ------------------------------------------------------------------ layout
 let fitDist = 12;
-const post = new Post(renderer, scene, camera);
+const post = new Post(renderer, scene, camera, phone);
+post.onLowRes = () => {
+  dprCap = 1;
+  renderer.setPixelRatio(1);
+  resize();
+};
+post.onNoShadow = () => {
+  renderer.shadowMap.enabled = false;
+  scene.traverse((o) => {
+    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => (m.needsUpdate = true));
+  });
+};
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h);
@@ -365,8 +375,8 @@ function frame() {
   // keep the figures in the sharp band of the tilt-shift
   focusPt.set(0, 0.75, 1.3).project(camera);
   post.setFocus(clamp(focusPt.y * 0.5 + 0.5, 0.2, 0.8), 1);
-  if (state === 'play') post.watch(dt);
-  post.render(scene, camera);
+  post.watch(dt);
+  post.render();
   if (fadeK > 0) {
     fadeK = Math.max(0, fadeK - dt / 1.8);
     fadeEl.style.opacity = String(fadeK * fadeK);
@@ -377,4 +387,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // debug hooks
-window.__mb = { story, setT: (t) => startPlay(t), hold: (t) => { held = t; }, sound, camera, renderer, scene };
+window.__mb = { post, phone, story, setT: (t) => startPlay(t), hold: (t) => { held = t; }, sound, camera, renderer, scene };

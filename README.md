@@ -58,12 +58,13 @@ GitHub Actions (`.github/workflows/deploy.yml`).
    gh workflow run send-gift.yml --repo alephhNull/tiny-duet
    ```
 
-   The bot sends you a photo of the closed music box with one 🎁 button, and sets the chat's menu
-   button to 🎁 too. To use a different emoji, add `-f button=💌`.
-7. Forward that photo to her. Tapping 🎁 opens the music box inside Telegram, full screen on phones.
+   The bot sends you the message «فاطیما، کوکش کن🎶» with one 🎁 button under it, and sets the chat's
+   menu button to 🎁 too. Change them with `-f text=...` or `-f button=💌`.
+7. Forward that message to her. Tapping 🎁 opens the music box inside Telegram, full screen on phones.
 
 ### Before you send it
 
+- On phones the app starts with lighter graphics and steps down further on its own if frames drop.
 - Test it on your own phone first, with the sound on. It's built so the song should play even when an
   iPhone is on silent, but check that on a real phone before you send it.
 - The repository is public and the song is a commercial recording, so don't share the link around.

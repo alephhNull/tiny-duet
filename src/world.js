@@ -50,8 +50,9 @@ export class Rain {
     this.floor = 0;
   }
   update(dt) {
-    const arr = this.geo.attributes.position.array;
     const active = Math.floor(this.n * clamp(this.intensity));
+    if (active === 0 && !this.mesh.visible) return;
+    const arr = this.geo.attributes.position.array;
     for (let i = 0; i < this.n; i++) {
       const d = this.drops[i];
       d.y -= d.v * dt;
@@ -98,6 +99,9 @@ export class Petals {
   update(dt) {
     this.time += dt;
     const active = Math.floor(this.n * clamp(this.intensity));
+    // nothing falling and nothing left on the stage: skip the work
+    if (active === 0 && this.idle) return;
+    this.idle = active === 0 && this.p.every((p) => p.y <= this.floorY);
     const d = this.dummy;
     for (let i = 0; i < this.n; i++) {
       const p = this.p[i];

@@ -474,10 +474,7 @@ export class Doll {
     this.blinking -= dt;
     const blink = this.blinking > 0 && OPEN_EYES.has(this.expr);
     const tex = faceTex(this.kind, this.expr, blink);
-    if (this.face.material.map !== tex) {
-      this.face.material.map = tex;
-      this.face.material.needsUpdate = true;
-    }
+    if (this.face.material.map !== tex) this.face.material.map = tex;
 
     // hop (tap reaction)
     this.hop = Math.max(0, this.hop - dt * 2.2);
@@ -622,6 +619,5 @@ export class Kid {
     if (e === this.expr) return;
     this.expr = e;
     this.face.material.map = faceTex('kid', e);
-    this.face.material.needsUpdate = true;
   }
 }

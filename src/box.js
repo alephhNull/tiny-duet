@@ -15,10 +15,9 @@ uniform vec2 sun; uniform float sunOn; uniform vec2 moon; uniform float moonOn;
 uniform float stars; uniform float time; uniform float pulse; uniform float overcast; uniform float bright;
 uniform float clouds; uniform vec3 cloudCol;
 varying vec2 vUv;
-float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
-  return mix(mix(hash(i), hash(i+vec2(1.0,0.0)), u.x), mix(hash(i+vec2(0.0,1.0)), hash(i+vec2(1.0,1.0)), u.x), u.y); }
-float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a*vnoise(p); p *= 2.03; a *= 0.5; } return v; }
+uniform sampler2D noiseTex;
+// cheap arithmetic hash (no sin), friendly to phone GPUs
+float hash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 void main(){
   vec2 p = vUv*2.0-1.0;
   float h = clamp(p.y*0.5+0.5, 0.0, 1.0);
@@ -40,18 +39,52 @@ void main(){
   float tw = 0.55 + 0.45*sin(time*2.0 + r*40.0);
   c += vec3(1.0,0.96,0.86) * 2.2 * st * tw * (1.0+pulse*0.6) * smoothstep(-0.45, 0.1, p.y);
   // painted clouds drifting across
-  vec2 cp = vec2(p.x*1.4 + time*0.03, p.y*2.6 - 0.4);
-  float cl = fbm(cp + fbm(cp*0.7 + time*0.01));
-  float cm = smoothstep(0.62 - clouds*0.22, 0.78, cl) * clouds * smoothstep(-0.75, -0.1, p.y);
-  float lit = smoothstep(0.55, 0.85, fbm(cp + vec2(0.0, 0.06)));
-  vec3 cc = mix(cloudCol * 1.12, cloudCol * 0.78, lit);
-  c = mix(c, cc, cm * 0.92);
+  if (clouds > 0.01) {
+    vec2 cp = vec2(p.x*0.35 + time*0.008, p.y*0.65 - 0.1);
+    float cl = texture2D(noiseTex, cp).r * 0.65 + texture2D(noiseTex, cp*2.1 + vec2(time*0.004, 0.3)).r * 0.35;
+    float cm = smoothstep(0.56 - clouds*0.2, 0.72, cl) * clouds * smoothstep(-0.75, -0.1, p.y);
+    float lit = smoothstep(0.5, 0.75, texture2D(noiseTex, cp + vec2(0.0, 0.02)).r);
+    vec3 cc = mix(cloudCol * 1.12, cloudCol * 0.78, lit);
+    c = mix(c, cc, cm * 0.92);
+  }
   c = mix(c, c*0.82 + vec3(0.025), overcast * (0.5+0.5*sin(p.y*26.0 + p.x*4.0 + time*0.3)) * 0.22);
   c *= mix(1.0, 0.8, smoothstep(0.78, 1.0, length(p)));
   c += (hash(floor(vUv*420.0)) - 0.5) * 0.018;
   gl_FragColor = vec4(c*bright, 1.0);
   #include <colorspace_fragment>
 }`;
+
+// soft, tileable cloud noise baked once on the CPU, so the sky shader only samples a texture
+function cloudNoise(size = 128) {
+  const R = rng(17);
+  const data = new Uint8Array(size * size * 4);
+  const octaves = [[4, 0.5], [8, 0.25], [16, 0.13], [32, 0.07], [64, 0.05]];
+  const lattices = octaves.map(([n]) => Array.from({ length: n * n }, () => R()));
+  const sm = (t) => t * t * (3 - 2 * t);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let v = 0;
+      octaves.forEach(([n, a], o) => {
+        const L = lattices[o];
+        const fx = (x / size) * n, fy = (y / size) * n;
+        const ix = Math.floor(fx), iy = Math.floor(fy);
+        const tx = sm(fx - ix), ty = sm(fy - iy);
+        const g = (i, j) => L[((j % n) + n) % n * n + (((i % n) + n) % n)];
+        const top = g(ix, iy) + (g(ix + 1, iy) - g(ix, iy)) * tx;
+        const bot = g(ix, iy + 1) + (g(ix + 1, iy + 1) - g(ix, iy + 1)) * tx;
+        v += (top + (bot - top) * ty) * a;
+      });
+      const k = (y * size + x) * 4;
+      data[k] = data[k + 1] = data[k + 2] = Math.round(Math.min(1, v) * 255);
+      data[k + 3] = 255;
+    }
+  }
+  const t = new THREE.DataTexture(data, size, size);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = t.minFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
+  return t;
+}
 
 export class MusicBox {
   constructor() {
@@ -227,7 +260,7 @@ export class MusicBox {
         sun: { value: new THREE.Vector2(0, -2) }, sunOn: { value: 0 },
         moon: { value: new THREE.Vector2(0, -2) }, moonOn: { value: 0 },
         stars: { value: 0 }, time: { value: 0 }, pulse: { value: 0 }, overcast: { value: 0 }, bright: { value: 1 },
-        clouds: { value: 0 }, cloudCol: { value: new THREE.Color('#ffffff') },
+        clouds: { value: 0 }, cloudCol: { value: new THREE.Color('#ffffff') }, noiseTex: { value: cloudNoise() },
       },
     });
     const sky = new THREE.Mesh(new THREE.CircleGeometry(3.24, 96), this.skyMat);

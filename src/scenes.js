@@ -331,7 +331,6 @@ export function buildMeadow(on, off, popTimes) {
   }
   const fgroup = new THREE.Group();
   fgroup.add(stems, heads);
-  stems.castShadow = heads.castShadow = true;
   s.group.add(fgroup);
   const d = new THREE.Object3D();
   // grass tufts

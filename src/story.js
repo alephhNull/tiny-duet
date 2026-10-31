@@ -109,7 +109,6 @@ const pairSpin = monoTrack([[77.6, 0], [80, 0.15], [84, 0.9], [88, 2.4], [100, 2
 const pairC = monoTrack([[77.6, [0, 1.62]], [80, [0, 1.62]], [88, [0, 0.2]], [100, [0, 0.2]], [106.6, [0, 1.5]], [400, [0, 1.5]]]);
 const pairLift = monoTrack([[88.5, 0], [91.5, 0.5], [98, 0.5], [101.5, 0]]);
 const girlPath = monoTrack([[C.girl, [1.0, 1.0]], [C.girl + 0.5, [1.0, 1.0]], [C.girlAt, [0, 1.66]], [C.walkHome, [0, 1.66]], [C.door, [0, 0.78]], [400, [0, 0.78]]]);
-const practical = monoTrack([[-1, [0, 1, 1.5, 0]], [3, [0.3, 1.5, 1.3, 0.6]], [17.5, [0.3, 1.5, 1.3, 0.6]], [19, [0.3, 1.5, 1.3, 0]], [33, [0.3, 1.5, 1.3, 0]], [35, [0.5, 1.7, 1.1, 1.4]], [54.8, [0.5, 1.7, 1.1, 1.4]], [56, [0.5, 1.7, 1.1, 0]], [119, [0, 0.9, 0.9, 0]], [121.5, [0, 0.9, 0.9, 1.3]], [130, [0, 0.9, 0.9, 1.3]], [132, [0, 0.9, 0.9, 0]]]);
 
 // ------------------------------------------------------------------ director
 export class Story {
@@ -266,7 +265,6 @@ export class Story {
     sky.overcast.value = overcast(T);
     sky.clouds.value = cloudAmt(T);
     sky.cloudCol.value.copy(cloudCol(T));
-    this.flash.intensity = T < 0 ? 0 : flashTrack(T);
     sky.time.value = time;
     sky.pulse.value = pulse;
     this.scene3.background.copy(ROOM).lerp(skyBot(T), 0.1);
@@ -280,11 +278,10 @@ export class Story {
     this.keyLight.position.set(kp[0], kp[1], kp[2]);
     this.hemi.color.copy(hemiSky(T));
     this.hemi.groundColor.copy(stageCol(T)).multiplyScalar(0.6);
-    this.hemi.intensity = hemiInt(T);
+    // a warm burst of light when the lid opens, the cloud pops and the string is tied
+    const fl = T < 0 ? 0 : flashTrack(T);
+    this.hemi.intensity = hemiInt(T) + fl * 0.12;
     this.scene3.environmentIntensity = envInt(T);
-    const pr = practical(T);
-    this.lamp.position.set(pr[0], pr[1], pr[2]);
-    this.lamp.intensity = pr[3] * (1 + pulse * 0.15);
 
     ctx.rain = rainInt(T);
     this.rain.intensity = ctx.rain;
