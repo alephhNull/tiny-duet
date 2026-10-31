@@ -28,10 +28,21 @@ jobs:
         run: |
           set -euo pipefail
           api="https://api.telegram.org/bot${BOT_TOKEN}"
+          # call the Bot API; on failure print only Telegram's error description
+          tg() {
+            local method=$1; shift
+            local out
+            out=$(curl -s "$api/$method" "$@")
+            if [ "$(echo "$out" | jq -r '.ok')" != "true" ]; then
+              echo "Telegram $method failed: $(echo "$out" | jq -r '.description // "no response"')" >&2
+              exit 1
+            fi
+            echo "$out"
+          }
           # never print anything that identifies you or the bot: these logs are public
-          bot=$(curl -sf "$api/getMe" | jq -r '.result.username')
+          bot=$(tg getMe | jq -r '.result.username')
           echo "::add-mask::$bot"
-          updates=$(curl -sf "$api/getUpdates")
+          updates=$(tg getUpdates)
           chat=$(echo "$updates" | jq -r '[.result[] | (.message // .edited_message // .my_chat_member) | select(.chat.type == "private") | .chat.id] | last // empty')
           if [ -z "$chat" ]; then
             # only counts and update kinds, nothing personal
@@ -41,10 +52,10 @@ jobs:
           fi
           echo "::add-mask::$chat"
           # the chat's menu button opens the music box too
-          curl -sf "$api/setChatMenuButton" -H 'Content-Type: application/json' \
+          tg setChatMenuButton -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg t "$BUTTON" --arg u "$SITE" '{menu_button:{type:"web_app",text:$t,web_app:{url:$u}}}')" >/dev/null
           link="https://t.me/${bot}?startapp"
           body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg t "$BUTTON" --arg l "$link" \
             '{chat_id:$c, text:$m, reply_markup:{inline_keyboard:[[{text:$t, url:$l}]]}}')
-          curl -sf "$api/sendMessage" -H 'Content-Type: application/json' -d "$body" >/dev/null
+          tg sendMessage -H 'Content-Type: application/json' -d "$body" >/dev/null
           echo "Sent. Open your bot chat in Telegram and forward the message to her."
