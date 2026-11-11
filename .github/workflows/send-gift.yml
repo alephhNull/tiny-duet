@@ -7,7 +7,8 @@
 #
 #   mode list   shows everyone the bot knows, numbered (never names or ids: logs are public)
 #   mode label  gives number <pick> a label, e.g. "her" or "me"
-#   mode send   sends to <pick>, a number or a label
+#   mode send   sends to <pick>, a number or a label; <page> is any page of the site,
+#               so each new gift added to the repo can be sent the same way
 #
 # Needs the repository secret BOT_TOKEN (from @BotFather).
 name: Send the gift button
@@ -27,10 +28,8 @@ on:
         description: For label — the name to give it (e.g. her, me)
         default: ""
       page:
-        description: Which gift the button opens
-        type: choice
-        options: [letter, musicbox]
-        default: letter
+        description: Which page the button opens, under the site (e.g. letter/ — empty for the music box)
+        default: "letter/"
       text:
         description: Message text
         default: "شما نامه جدید دارین"
@@ -117,8 +116,7 @@ jobs:
           if [ "$MODE" = "send" ]; then
             chat=$(resolve)
             if [ -z "$chat" ]; then echo "No chat matches \"$PICK\" — run with mode list."; exit 1; fi
-            url="$SITE"
-            if [ "$PAGE" = "letter" ]; then url="${SITE}letter/"; fi
+            url="${SITE}${PAGE#/}"
             # the button opens the gift right inside Telegram; that chat's menu button does too
             tg setChatMenuButton -H 'Content-Type: application/json' \
               -d "$(jq -nc --arg c "$chat" --arg t "$BUTTON" --arg u "$url" '{chat_id:($c|tonumber), menu_button:{type:"web_app",text:$t,web_app:{url:$u}}}')" >/dev/null
