@@ -1,8 +1,13 @@
-# Sends a short message with one button that opens the gift inside Telegram.
+# Sends a short message with one button that opens a gift inside Telegram.
 #
-# Run it with mode "list" first: it shows who has talked to the bot in the last ~24 hours
-# (numbered, with how long ago — never names, because these logs are public). Then run it
-# with mode "send" and the number of the person to send to.
+# Telegram only shows a bot who wrote to it in the last 24 hours, so this workflow also
+# remembers every private chat it sees (in .github/chats.enc, encrypted with the bot token,
+# because this repository is public). It checks every three hours on its own, so anyone
+# who writes to the bot is remembered for good.
+#
+#   mode list   shows everyone the bot knows, numbered (never names or ids: logs are public)
+#   mode label  gives number <pick> a label, e.g. "her" or "me"
+#   mode send   sends to <pick>, a number or a label
 #
 # Needs the repository secret BOT_TOKEN (from @BotFather).
 name: Send the gift button
@@ -11,12 +16,15 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: list (show who can receive it) or send
+        description: list, label or send
         type: choice
-        options: [list, send]
+        options: [list, label, send]
         default: list
       pick:
-        description: For send — the number from the list
+        description: For label/send — a number from the list, or a label like "her"
+        default: ""
+      label:
+        description: For label — the name to give it (e.g. her, me)
         default: ""
       page:
         description: Which gift the button opens
@@ -29,16 +37,26 @@ on:
       button:
         description: Button text
         default: "💌"
+  schedule:
+    - cron: "17 */3 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bot-chats
 
 jobs:
-  send:
+  bot:
     runs-on: ubuntu-latest
     steps:
-      - name: List or send
+      - uses: actions/checkout@v4
+      - name: Remember chats, then list, label or send
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          MODE: ${{ inputs.mode }}
+          MODE: ${{ github.event_name == 'schedule' && 'remember' || inputs.mode }}
           PICK: ${{ inputs.pick }}
+          LABEL: ${{ inputs.label }}
           PAGE: ${{ inputs.page }}
           TEXT: ${{ inputs.text }}
           BUTTON: ${{ inputs.button }}
@@ -57,36 +75,66 @@ jobs:
             fi
             echo "$out"
           }
-          updates=$(tg getUpdates)
-          now=$(date +%s)
-          # one row per private chat, most recent first: chat id, last activity, did they press Start
-          chats=$(echo "$updates" | jq -c --argjson now "$now" '
-            [.result[] | (.message // .edited_message // .my_chat_member) | select(.chat.type == "private")
-              | {id: .chat.id, date: .date, start: ((.text // "") | startswith("/start"))}]
-            | group_by(.id)
-            | map({id: .[0].id, last: (map(.date) | max), start: (map(.start) | any), n: length})
-            | sort_by(-.last)')
-          count=$(echo "$chats" | jq 'length')
+          store=.github/chats.enc
+          crypt() { openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BOT_TOKEN -a -A "$@"; }
+
+          # what we already know
+          known='[]'
+          if [ -f "$store" ]; then known=$(crypt -d -in "$store" 2>/dev/null || echo '[]'); fi
+          # what Telegram still has from the last 24 hours
+          fresh=$(tg getUpdates | jq -c '[.result[] | (.message // .edited_message // .my_chat_member) | select(.chat.type == "private")
+            | {id: .chat.id, first: .date, last: .date, start: ((.text // "") | startswith("/start")), label: null}]')
+          chats=$(jq -nc --argjson k "$known" --argjson f "$fresh" '($k + $f) | group_by(.id)
+            | map({id: .[0].id, first: (map(.first) | min), last: (map(.last) | max), start: (map(.start) | any),
+                   label: (map(.label) | map(select(. != null and . != "")) | first)})
+            | sort_by(.first)')
           for id in $(echo "$chats" | jq -r '.[].id'); do echo "::add-mask::$id"; done
+          count=$(echo "$chats" | jq 'length')
 
-          if [ "$MODE" = "list" ]; then
-            echo "People who talked to the bot in the last ~24 hours: $count"
+          # find a chat by number or by label
+          resolve() {
+            if [[ "$PICK" =~ ^[0-9]+$ ]] && [ "$PICK" -ge 1 ] && [ "$PICK" -le "$count" ]; then
+              echo "$chats" | jq -r --argjson i "$((PICK - 1))" '.[$i].id'
+            else
+              echo "$chats" | jq -r --arg l "$PICK" '[.[] | select(.label == $l)][0].id // empty'
+            fi
+          }
+
+          if [ "$MODE" = "label" ]; then
+            id=$(resolve)
+            if [ -z "$id" ] || [ -z "$LABEL" ]; then echo "Give a valid pick (number) and a label."; exit 1; fi
+            chats=$(echo "$chats" | jq -c --arg id "$id" --arg l "$LABEL" 'map(if (.id | tostring) == $id then .label = $l else (if .label == $l then .label = null else . end) end)')
+            echo "Labelled #$PICK as \"$LABEL\"."
+          fi
+
+          if [ "$MODE" = "list" ] || [ "$MODE" = "label" ] || [ "$MODE" = "remember" ]; then
+            now=$(date +%s)
+            echo "The bot knows $count chat(s):"
             echo "$chats" | jq -r --argjson now "$now" 'to_entries[] |
-              "#\(.key + 1) — last activity \(((($now - .value.last) / 3600) | floor))h \(((($now - .value.last) % 3600) / 60 | floor))m ago — pressed Start: \(if .value.start then "yes" else "no" end) — messages: \(.value.n)"'
-            exit 0
+              "#\(.key + 1)\(if .value.label then " (" + .value.label + ")" else "" end) — first seen \((($now - .value.first) / 86400) | floor)d ago — last activity \((($now - .value.last) / 3600) | floor)h ago — pressed Start: \(if .value.start then "yes" else "no" end)"'
           fi
 
-          if ! [[ "$PICK" =~ ^[0-9]+$ ]] || [ "$PICK" -lt 1 ] || [ "$PICK" -gt "$count" ]; then
-            echo "Pick a number from 1 to $count (run with mode \"list\" first)."
-            exit 1
+          if [ "$MODE" = "send" ]; then
+            chat=$(resolve)
+            if [ -z "$chat" ]; then echo "No chat matches \"$PICK\" — run with mode list."; exit 1; fi
+            url="$SITE"
+            if [ "$PAGE" = "letter" ]; then url="${SITE}letter/"; fi
+            # the button opens the gift right inside Telegram; that chat's menu button does too
+            tg setChatMenuButton -H 'Content-Type: application/json' \
+              -d "$(jq -nc --arg c "$chat" --arg t "$BUTTON" --arg u "$url" '{chat_id:($c|tonumber), menu_button:{type:"web_app",text:$t,web_app:{url:$u}}}')" >/dev/null
+            body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg t "$BUTTON" --arg u "$url" \
+              '{chat_id:$c, text:$m, reply_markup:{inline_keyboard:[[{text:$t, web_app:{url:$u}}]]}}')
+            tg sendMessage -H 'Content-Type: application/json' -d "$body" >/dev/null
+            echo "Sent to $PICK."
           fi
-          chat=$(echo "$chats" | jq -r --argjson i "$((PICK - 1))" '.[$i].id')
-          url="$SITE"
-          if [ "$PAGE" = "letter" ]; then url="${SITE}letter/"; fi
-          # the button opens the gift right inside Telegram; the chat's menu button does too
-          tg setChatMenuButton -H 'Content-Type: application/json' \
-            -d "$(jq -nc --arg c "$chat" --arg t "$BUTTON" --arg u "$url" '{chat_id:($c|tonumber), menu_button:{type:"web_app",text:$t,web_app:{url:$u}}}')" >/dev/null
-          body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg t "$BUTTON" --arg u "$url" \
-            '{chat_id:$c, text:$m, reply_markup:{inline_keyboard:[[{text:$t, web_app:{url:$u}}]]}}')
-          tg sendMessage -H 'Content-Type: application/json' -d "$body" >/dev/null
-          echo "Sent to #$PICK."
+
+          # save what we know (only when it changed)
+          if [ "$(echo "$chats" | jq -cS .)" != "$(echo "$known" | jq -cS .)" ]; then
+            echo "$chats" | crypt -salt -out "$store"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "$store"
+            git commit -q -m "Remember bot chats [skip ci]"
+            git pull -q --rebase && git push -q
+            echo "Saved."
+          fi
