@@ -116,12 +116,16 @@ jobs:
           if [ "$MODE" = "send" ]; then
             chat=$(resolve)
             if [ -z "$chat" ]; then echo "No chat matches \"$PICK\" — run with mode list."; exit 1; fi
-            url="${SITE}${PAGE#/}"
-            # the button opens the gift right inside Telegram; that chat's menu button does too
-            tg setChatMenuButton -H 'Content-Type: application/json' \
-              -d "$(jq -nc --arg c "$chat" --arg t "$BUTTON" --arg u "$url" '{chat_id:($c|tonumber), menu_button:{type:"web_app",text:$t,web_app:{url:$u}}}')" >/dev/null
-            body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg t "$BUTTON" --arg u "$url" \
-              '{chat_id:$c, text:$m, reply_markup:{inline_keyboard:[[{text:$t, web_app:{url:$u}}]]}}')
+            # a t.me link button survives forwarding (Telegram drops web-app buttons from forwards);
+            # the site turns ?startapp=<page> into that page
+            bot=$(tg getMe | jq -r '.result.username')
+            echo "::add-mask::$bot"
+            page="${PAGE#/}"
+            page="${page%/}"
+            link="https://t.me/${bot}?startapp"
+            if [ -n "$page" ]; then link="${link}=${page}"; fi
+            body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg t "$BUTTON" --arg l "$link" \
+              '{chat_id:$c, text:$m, reply_markup:{inline_keyboard:[[{text:$t, url:$l}]]}}')
             tg sendMessage -H 'Content-Type: application/json' -d "$body" >/dev/null
             echo "Sent to $PICK."
           fi
