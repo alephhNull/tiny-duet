@@ -9,6 +9,7 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "@fontsource/vazirmatn": "^5.3.0",
     "three": "^0.170.0"
   },
   "devDependencies": {
