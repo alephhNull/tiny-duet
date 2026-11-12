@@ -1,0 +1,56 @@
+<style>
+body{margin:0;background:#f1e1d3}
+#w{display:block;width:100%;max-width:340px;margin:auto;touch-action:manipulation}
+.k{stroke-linecap:round;stroke-linejoin:round;fill-rule:evenodd}
+.b{animation:b .5s steps(1) infinite}
+@keyframes b{50%{translate:.6px -.5px}}
+#fc{transform-origin:150px 112px;transition:scale .28s ease-in}
+#fo{transform-origin:150px 112px;scale:1 0;transition:scale .3s ease-out .28s}
+#l{transition:translate 1s cubic-bezier(.3,1.4,.5,1) .5s}
+.o #fc{scale:1 0}.o #fo{scale:1 1}.o #l{translate:0 -88px}
+.h{opacity:0}
+.o .h{animation:u 2.6s ease-out 1.4s infinite}
+.o .h:nth-of-type(2){animation-delay:2.2s}.o .h:nth-of-type(3){animation-delay:3s}
+@keyframes u{0%{opacity:0;translate:0 0;scale:.6}20%{opacity:1}100%{opacity:0;translate:0 -70px;scale:1.1}}
+#s{transition:opacity .2s}.o #s{opacity:0}
+.e{animation:e 4s infinite}@keyframes e{0%,94%,100%{scale:1 1}97%{scale:1 .1}}
+</style>
+<svg id="w" viewBox="0 0 300 290">
+<g class="b k" stroke="#9c4b45" stroke-width="2.4">
+<path d="M42 112 L258 112 L258 262 L42 262 Z" fill="#e7b9a5"/>
+<path id="fo" d="M43 112 L150 34 L257 112" fill="#d99c8a"/>
+<g id="l">
+<path d="M64 128 Q150 124 236 128 L234 256 L66 256 Z" fill="#fffaf2" stroke="#b9a99a" stroke-width="1.6"/>
+<path d="M78 150h144M78 170h144M78 190h144" stroke="#bcd3e6" stroke-width="1.4"/>
+<path d="M214 136 V250" stroke="#e88" stroke-width="1.2"/>
+<g transform="translate(118 202)">
+<path d="M-26 0 Q-30 -30 0 -32 Q30 -30 26 0 Q24 22 0 22 Q-24 22 -26 0" fill="#a9a6ad" stroke="#5f5a62" stroke-width="2"/>
+<path d="M-22 -18 Q-20 -30 -8 -30 Q-14 -22 -22 -18M22 -18 Q20 -30 8 -30 Q14 -22 22 -18" fill="#7d7882" stroke="#5f5a62" stroke-width="1.6"/>
+<path d="M-6 -24 l3 8M0 -26 v8M6 -24 l-3 8" stroke="#6c6771" stroke-width="1.6"/>
+<g class="e" style="transform-origin:0 -2px"><circle cx="-10" cy="-2" r="6" fill="#2b2530" stroke="none"/><circle cx="10" cy="-2" r="6" fill="#2b2530" stroke="none"/>
+<circle cx="-8" cy="-4" r="1.8" fill="#fff" stroke="none"/><circle cx="12" cy="-4" r="1.8" fill="#fff" stroke="none"/></g>
+<path d="M-3 6 L3 6 L0 9 Z" fill="#e58f9b" stroke="#c46" stroke-width="1"/>
+<path d="M0 9 Q-4 14 -8 11M0 9 Q4 14 8 11" fill="none" stroke="#5f5a62" stroke-width="1.4"/>
+<path d="M-28 4 h-12M-28 9 l-11 3M28 4 h12M28 9 l11 3" stroke="#5f5a62" stroke-width="1.2"/>
+</g>
+<path d="M176 188 c-9 -10 -22 2 -10 14 l10 9 l10 -9 c12 -12 -1 -24 -10 -14z" fill="#e0475a" stroke="#a52a3a" stroke-width="2"/>
+</g>
+<path d="M42 113 L150 190 L258 113 L258 262 L42 262 Z" fill="#e7b9a5"/>
+<path d="M42 262 L150 178 L258 262" fill="none"/>
+<path id="fc" d="M43 112 L150 192 L257 112" fill="#d99c8a"/>
+<g id="s"><circle cx="150" cy="190" r="17" fill="#c0283b" stroke="#86172a"/>
+<path d="M150 184 c-4 -5 -11 1 -5 7 l5 4 l5 -4 c6 -6 -1 -12 -5 -7z" fill="#e8576a" stroke="none"/></g>
+</g>
+<g fill="#e0475a" stroke="none">
+<path class="h" d="M90 96 c-5 -6 -13 1 -6 8 l6 5 l6 -5 c7 -7 -1 -14 -6 -8z"/>
+<path class="h" d="M212 86 c-4 -5 -11 1 -5 7 l5 4 l5 -4 c6 -6 -1 -12 -5 -7z"/>
+<path class="h" d="M150 70 c-4 -5 -10 1 -5 6 l5 4 l5 -4 c5 -5 -1 -11 -5 -6z"/>
+</g>
+</svg>
+<script>
+var W=TelegramWidget,o=0,w=document.getElementById('w');
+w.addEventListener('click',function(){
+if(!o){o=1;w.classList.add('o');W.HapticFeedback&&W.HapticFeedback.impactOccurred('soft')}
+else W.openTelegramLink('__LINK__')});
+W.ready&&W.ready();
+</script>

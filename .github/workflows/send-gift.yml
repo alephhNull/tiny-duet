@@ -9,6 +9,9 @@
 #   mode label  gives number <pick> a label, e.g. "her" or "me"
 #   mode send   sends to <pick>, a number or a label; <page> is any page of the site,
 #               so each new gift added to the repo can be sent the same way
+#   mode widget sends widgets/<page>.html as a Telegram widget (drawn inside the message);
+#               tapping it after it opens goes to the full page. Widgets only work in the
+#               bot's own chat for now and cannot be forwarded yet.
 #
 # Needs the repository secret BOT_TOKEN (from @BotFather).
 name: Send the gift button
@@ -19,7 +22,7 @@ on:
       mode:
         description: list, label or send
         type: choice
-        options: [list, label, send]
+        options: [list, label, send, widget]
         default: list
       pick:
         description: For label/send — a number from the list, or a label like "her"
@@ -113,7 +116,7 @@ jobs:
               "#\(.key + 1)\(if .value.label then " (" + .value.label + ")" else "" end) — first seen \((($now - .value.first) / 86400) | floor)d ago — last activity \((($now - .value.last) / 3600) | floor)h ago — pressed Start: \(if .value.start then "yes" else "no" end)"'
           fi
 
-          if [ "$MODE" = "send" ]; then
+          if [ "$MODE" = "send" ] || [ "$MODE" = "widget" ]; then
             chat=$(resolve)
             if [ -z "$chat" ]; then echo "No chat matches \"$PICK\" — run with mode list."; exit 1; fi
             # a t.me link button survives forwarding (Telegram drops web-app buttons from forwards);
@@ -124,9 +127,17 @@ jobs:
             page="${page%/}"
             link="https://t.me/${bot}?startapp"
             if [ -n "$page" ]; then link="${link}=${page}"; fi
-            body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg t "$BUTTON" --arg l "$link" \
-              '{chat_id:$c, text:$m, reply_markup:{inline_keyboard:[[{text:$t, url:$l}]]}}')
-            tg sendMessage -H 'Content-Type: application/json' -d "$body" >/dev/null
+            if [ "$MODE" = "widget" ]; then
+              file="widgets/${page:-index}.html"
+              [ -f "$file" ] || { echo "No $file in the repo."; exit 1; }
+              body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg l "$link" --rawfile h "$file" \
+                '{chat_id:$c, caption:$m, html:($h | gsub("__LINK__"; $l))}')
+              tg sendWidget -H 'Content-Type: application/json' -d "$body" >/dev/null
+            else
+              body=$(jq -nc --arg c "$chat" --arg m "$TEXT" --arg t "$BUTTON" --arg l "$link" \
+                '{chat_id:$c, text:$m, reply_markup:{inline_keyboard:[[{text:$t, url:$l}]]}}')
+              tg sendMessage -H 'Content-Type: application/json' -d "$body" >/dev/null
+            fi
             echo "Sent to $PICK."
           fi
 
